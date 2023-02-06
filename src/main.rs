@@ -67,7 +67,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let mut counter = 0;
     loop {
-        println!("Waiting {}", counter);
+        println!("Waiting {counter}");
         counter += 1;
         tokio::select! {
 
@@ -94,7 +94,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             res = stream.next() =>  {
                 println!("stream.next");
                 if let Some(Ok(response)) = res {
-                    println!("{:?}", response);
+                    println!("{response:?}");
 
 
                     let shelly_res = response.records()
@@ -110,10 +110,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
                         let topic = dht_manager.get_topic(&shelly.mac_address).await;
                         match topic {
                             Ok(t) => {
-                                    println!("{}", t);
+                                    println!("{t}");
 
                                     if let Some(value) = t.get("value"){
-                                        println!("{}", value);
+                                        println!("{value}");
                                         if let Some(user_login) = value.get("user_login"){
                                             if let Some(user_password) = value.get("user_password") {
 
@@ -165,7 +165,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 if let Ok(cmd) = command {
                     match cmd {
                         DHTCommand::ActuatorCommand(value) => {
-                            println!("Received command for shelly: {}", value);
+                            println!("Received command for shelly: {value}");
 
 
                             if let Some(mac_address) = value.get("mac_address") {
@@ -207,7 +207,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             shelly_message = shelly_manager.wait_for_shelly_message() => {
                 println!("wait_for_shelly_message");
                 if let Ok(message) = shelly_message {
-                    println!("From shelly: {}", message);
+                    println!("From shelly: {message}");
                     handle_shelly_message(message, &mut dht_manager).await;
                 }
             }
@@ -276,7 +276,7 @@ async fn handle_shelly_message(shelly_message: serde_json::Value, dht_manager: &
                                     new_status["user_password"] =
                                         serde_json::Value::String(user_password.to_string());
 
-                                    println!("New status {}", new_status);
+                                    println!("New status {new_status}");
                                     let client = reqwest::Client::new();
                                     let _res = client
                                         .post(
@@ -445,7 +445,7 @@ async fn handle_ble_contact_update(
 
         let len_hex_value = "1d";
         let rssi_i = *rssi as i8;
-        let rssi_hex = format!("{:x}", rssi_i);
+        let rssi_hex = format!("{rssi_i:x}");
 
         let data = len_hex_value.to_owned() + message + &rssi_hex;
 
@@ -454,7 +454,7 @@ async fn handle_ble_contact_update(
             let val = u64::from(m.state != ContactStatus::Open);
 
             let val_in_topic = value_of_topic["status"].as_u64().unwrap();
-            println!("val {}, value_of_topic {}", val, val_in_topic);
+            println!("val {val}, value_of_topic {val_in_topic}");
             if val != val_in_topic {
                 let value = serde_json::json!({
                     "status": val,

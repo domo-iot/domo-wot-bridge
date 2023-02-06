@@ -144,7 +144,7 @@ impl DHTManager {
                             };
                             self.topic_cache
                                 .insert(mac_address_str.to_string(), topic_entry);
-                            println!("Insert in topic_cache {}", topic_owned);
+                            println!("Insert in topic_cache {topic_owned}");
                             return Ok(topic_owned);
                         }
                     }
@@ -206,7 +206,7 @@ impl DHTManager {
             .send(Message::Text(message.to_string()))
             .await;
 
-        println!("Sent message: {} ", message);
+        println!("Sent message: {message} ");
     }
 
     fn handle_volatile_command(

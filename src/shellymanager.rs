@@ -37,7 +37,7 @@ impl ShellyManager {
         let mut connect_attempts_counter = 0;
 
         let enc = encode(user_login.to_owned() + ":" + user_password);
-        let header = format!("Basic {}", enc);
+        let header = format!("Basic {enc}");
 
         loop {
             let ws_request = http::Request::builder()
@@ -72,7 +72,7 @@ impl ShellyManager {
                         return Ok((write_shelly, read_shelly));
                        }else {
                          connect_attempts_counter += 1;
-                         println!("{:?}", ws_shelly_res);
+                         println!("{ws_shelly_res:?}");
                          if connect_attempts_counter == 2 {
                             return Err("connect error".into());
                          }
