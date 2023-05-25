@@ -183,6 +183,12 @@ pub async fn handle_dim_command(
         let dht_connection_topic = dht_manager
             .cache
             .get_topic_uuid("domo_actuator_connection", topic_uuid)?;
+
+
+        if dht_connection_topic.get("value").is_none() {
+            return Err("no connection".into());
+        }
+
         let dht_connection_topic = dht_connection_topic.get("value").unwrap();
 
         if let Some(target_topic_name) = dht_connection_topic.get("target_topic_name") {
