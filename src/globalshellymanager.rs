@@ -128,9 +128,9 @@ impl GlobalShellyManager {
                 .elapsed()
                 .unwrap()
                 .as_secs()
-                > 60
+                > 10
             {
-                //println!("Reconnect to shelly {} ", self.shelly_list[idx].mac_address);
+                println!("Reconnect to shelly {} ", self.shelly_list[idx].mac_address);
                 let ret = self.shelly_list[idx].reconnect().await;
                 match ret {
                     Ok(_) => {}
