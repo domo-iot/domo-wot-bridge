@@ -141,7 +141,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             // mdns await
             res = stream.next() =>  {
 
-                //println!("Received mdns message");
+                println!("Received mdns message");
 
                 if let Some(Ok(response)) = res {
 
@@ -151,7 +151,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
                     if let Some(shelly) = shelly_res {
 
-                        //println!("{} {} {}", shelly.topic_name, shelly.mac_address, shelly.ip_address);
+                        println!("{} {} {}", shelly.topic_name, shelly.mac_address, shelly.ip_address);
 
                         let topic = dht_manager.get_actuator_from_mac_address(&shelly.mac_address).await;
                         match topic {

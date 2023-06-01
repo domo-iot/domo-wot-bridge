@@ -59,30 +59,34 @@ impl ShellyManager {
 
             let connector = native_tls::TlsConnector::builder().build()?;
 
-            let shelly_tcp_stream = TcpStream::connect(ip.to_owned() + ":443").await?;
+            println!("Perform TCP Connection");
 
             tokio::select! {
 
-                //ws_shelly_res = tokio_tungstenite::connect_async_tls_with_config(ws_request, None, Some(tokio_tungstenite::Connector::NativeTls(connector))) => {
+                shelly_tcp_stream = TcpStream::connect(ip.to_owned() + ":443") => {
 
-                ws_shelly_res = tokio_tungstenite::client_async_tls_with_config(ws_request, shelly_tcp_stream, None, Some(tokio_tungstenite::Connector::NativeTls(connector))) => {
-                    if let Ok(ws_sh) = ws_shelly_res {
-                        let ws_shelly = ws_sh.0;
-                        let (write_shelly, read_shelly) = ws_shelly.split();
-                        return Ok((write_shelly, read_shelly));
-                       } else {
-                         connect_attempts_counter += 1;
-                         //println!("{:?}", ws_shelly_res);
-                         if connect_attempts_counter == 2 {
-                            return Err("connect error".into());
-                         }
+                    if let Ok(shelly_tcp_stream) = shelly_tcp_stream {
+                                let ws_shelly_res = tokio_tungstenite::client_async_tls_with_config(
+                                ws_request, shelly_tcp_stream, None,
+                                Some(tokio_tungstenite::Connector::NativeTls(connector))).await;
+
+                                if let Ok(ws_sh) = ws_shelly_res {
+                                    let ws_shelly = ws_sh.0;
+                                    let (write_shelly, read_shelly) = ws_shelly.split();
+                                    return Ok((write_shelly, read_shelly));
+                                   } else {
+                                     connect_attempts_counter += 1;
+                                     //println!("{:?}", ws_shelly_res);
+                                     if connect_attempts_counter == 2 {
+                                        return Err("connect error".into());
+                                     }
+                                }
                     }
-
 
                 }
 
-                _ = tokio::time::sleep(Duration::from_millis(10000)) => {
-                       //println!("Connect to shelly timeout");
+                _ = tokio::time::sleep(Duration::from_millis(3000)) => {
+                       println!("Connect to shelly timeout");
                        connect_attempts_counter += 1;
 
                        if connect_attempts_counter == 2 {
