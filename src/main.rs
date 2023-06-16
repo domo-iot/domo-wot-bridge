@@ -568,29 +568,41 @@ async fn get_topic_from_actuator_topic(
 
             source_topic["value"]["updated_properties"] = serde_json::Value::Array(props);
         } else if target_topic_name == "shelly_rgbw" {
+
+            let rgbw_status_value_string = actuator_topic["rgbw_status"].as_str().ok_or("Error in rgbw_status")?;
+
+            let rgbw_status: serde_json::Value = serde_json::from_str(rgbw_status_value_string)?;
+
             let _val = 0;
             if channel_number == 1 {
-                source_topic["value"]["status"] = actuator_topic["rgbw_status"]["r"].clone();
+                source_topic["value"]["status"] = rgbw_status["r"].clone();
             }
             if channel_number == 2 {
-                source_topic["value"]["status"] = actuator_topic["rgbw_status"]["g"].clone();
+                source_topic["value"]["status"] = rgbw_status["g"].clone();
             }
 
             if channel_number == 3 {
-                source_topic["value"]["status"] = actuator_topic["rgbw_status"]["b"].clone();
+                source_topic["value"]["status"] = rgbw_status["b"].clone();
             }
 
             if channel_number == 4 {
-                source_topic["value"]["status"] = actuator_topic["rgbw_status"]["w"].clone();
+                source_topic["value"]["status"] = rgbw_status["w"].clone();
             }
         }
     }
 
     if source_topic_name == "domo_rgbw_light" {
-        source_topic["value"]["r"] = actuator_topic["rgbw_status"]["r"].clone();
-        source_topic["value"]["g"] = actuator_topic["rgbw_status"]["g"].clone();
-        source_topic["value"]["b"] = actuator_topic["rgbw_status"]["b"].clone();
-        source_topic["value"]["w"] = actuator_topic["rgbw_status"]["w"].clone();
+        let rgbw_status_value_string = actuator_topic["rgbw_status"].as_str().ok_or("Error in rgbw_status")?;
+
+        let rgbw_status: serde_json::Value = serde_json::from_str(rgbw_status_value_string)?;
+
+        println!("HERE DOMO_RGBW_LIGHT {} {} {} {}", rgbw_status["r"],
+                 rgbw_status["g"], rgbw_status["b"], rgbw_status["w"]);
+
+        source_topic["value"]["r"] = rgbw_status["r"].clone();
+        source_topic["value"]["g"] = rgbw_status["g"].clone();
+        source_topic["value"]["b"] = rgbw_status["b"].clone();
+        source_topic["value"]["w"] = rgbw_status["w"].clone();
     }
 
     if source_topic_name == "domo_light"

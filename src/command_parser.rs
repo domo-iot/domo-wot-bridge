@@ -302,10 +302,10 @@ pub async fn handle_rgbw_command(
                         if let Some(mac_address) = value.get("mac_address") {
                             let action_payload = serde_json::json!({
                                 "rgbw_status": {
-                                    "r": desired_state.get("r").unwrap().as_u64().unwrap(),
-                                    "g": desired_state.get("g").unwrap().as_u64().unwrap(),
-                                    "b": desired_state.get("b").unwrap().as_u64().unwrap(),
-                                    "w": desired_state.get("w").unwrap().as_u64().unwrap()
+                                    "r_value": desired_state.get("r_value").unwrap().as_u64().unwrap(),
+                                    "g_value": desired_state.get("g_value").unwrap().as_u64().unwrap(),
+                                    "b_value": desired_state.get("b_value").unwrap().as_u64().unwrap(),
+                                    "w_value": desired_state.get("w_value").unwrap().as_u64().unwrap()
                                 }
                             });
 
