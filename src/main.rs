@@ -251,7 +251,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 }
             },
             _ = ping_mgr.wait_ping_timer() => {
-                //println!("PING_TIMER {}", counter);
+                println!("PING_TIMER {}", counter);
 
                 shelly_manager.send_ping().await;
                 shelly_manager.check_if_reconnect_needed().await;

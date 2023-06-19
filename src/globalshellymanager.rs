@@ -131,7 +131,7 @@ impl GlobalShellyManager {
                 .as_secs();
 
             println!("{} pong_timestamp_elapsed {}", self.shelly_list[idx].mac_address, elapsed);
-            if elapsed > 30 {
+            if elapsed > 120 {
                 println!("Reconnect to shelly {} ", self.shelly_list[idx].mac_address);
                 let ret = self.shelly_list[idx].reconnect().await;
                 println!("AFTER RECONNECT");
