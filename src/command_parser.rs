@@ -1,11 +1,12 @@
 use crate::dhtmanager::{DHTCommand, DHTManager};
+use sifis_dht::utils::get_epoch_ms;
 use std::error::Error;
 
 pub async fn handle_turn_command(
     dht_manager: &DHTManager,
     command: &serde_json::Value,
 ) -> Result<DHTCommand, Box<dyn Error>> {
-    //println!("DOMO: handle_turn_command");
+    //println!("DOMO: handle_turn_command {}", get_epoch_ms());
     if let Some(value) = command.get("value") {
         let mut topic_uuid = "";
         let mut desired_state = false;
@@ -91,7 +92,7 @@ pub async fn handle_turn_command(
                                 }
                             });
 
-                            //println!("DOMO: RETURN ACTUATOR COMMAND");
+                            //println!("DOMO: RETURN ACTUATOR COMMAND {}", get_epoch_ms());
                             return Ok(DHTCommand::ActuatorCommand(value));
                         }
                     }
@@ -183,7 +184,6 @@ pub async fn handle_dim_command(
         let dht_connection_topic = dht_manager
             .cache
             .get_topic_uuid("domo_actuator_connection", topic_uuid)?;
-
 
         if dht_connection_topic.get("value").is_none() {
             return Err("no connection".into());

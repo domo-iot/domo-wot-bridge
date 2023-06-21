@@ -1,22 +1,117 @@
+use std::collections::HashMap;
 use sifis_dht::domocache::DomoEvent;
+use sifis_dht::utils::get_epoch_ms;
 use std::error::Error;
 
-use crate::command_parser;
+use crate::{command_parser, get_topic_from_actuator_topic};
 
 pub enum DHTCommand {
     ActuatorCommand(serde_json::Value),
     ValveCommand(serde_json::Value),
 }
 
+
+pub struct ConnElem {
+    pub source_topic_name: String,
+    pub  source_topic_uuid: String,
+    pub target_channel_number: u64
+}
+
 pub struct DHTManager {
     pub cache: sifis_dht::domocache::DomoCache,
+    pub actuators_index: HashMap<String, Vec<ConnElem>>
 }
 
 impl DHTManager {
     pub async fn new(cache_config: sifis_config::Cache) -> Result<DHTManager, Box<dyn Error>> {
         let sifis_cache = sifis_dht::domocache::DomoCache::new(cache_config).await?;
+        let actuators_index = HashMap::new();
+        Ok(DHTManager { cache: sifis_cache, actuators_index })
+    }
 
-        Ok(DHTManager { cache: sifis_cache })
+
+    pub async fn update_actuator_connections(&mut self, topic_name: &str, topic_uuid: &str, actuator_topic: &serde_json::Value){
+        let k = topic_name.to_owned() +"-"+ topic_uuid;
+
+        if let Some(conns) = self.actuators_index.get(&k) {
+            for conn in conns {
+
+
+                if let Ok(status) = get_topic_from_actuator_topic(
+                    self,
+                    &conn.source_topic_name,
+                    &conn.source_topic_uuid,
+                    conn.target_channel_number,
+                    actuator_topic,
+                    topic_name
+                ).await
+                {
+
+                    println!("Updating");
+                    println!("{} {} ", conn.source_topic_name, conn.source_topic_uuid);
+
+                    self.cache
+                        .write_value(&conn.source_topic_name, &conn.source_topic_uuid, status)
+                        .await;
+                }
+            }
+        }
+    }
+
+    pub async fn build_actuators_index(&mut self) -> Result<(), Box<dyn Error>> {
+
+        println!("BUILD ACT INDEX");
+
+        self.actuators_index.clear();
+
+        let connections = self.cache.get_topic_name("domo_actuator_connection").unwrap();
+
+        for conn in connections.as_array().unwrap().iter() {
+            if let Some(value) = conn.get("value") {
+                if let Some(target_topic_name) = value.get("target_topic_name") {
+                    if let Some(target_topic_uuid) = value.get("target_topic_uuid") {
+                        if let Some(target_channel_number) = value.get("target_channel_number") {
+                            if let Some(source_topic_name) = value.get("source_topic_name") {
+                                let target_topic_name = target_topic_name.as_str().unwrap();
+                                let target_topic_uuid = target_topic_uuid.as_str().unwrap();
+                                let target_channel_number = target_channel_number.as_u64().unwrap();
+                                let source_topic_name = source_topic_name.as_str().unwrap();
+                                let source_topic_uuid = conn["topic_uuid"].as_str().unwrap();
+
+                                let c: ConnElem = ConnElem{
+                                    source_topic_name: source_topic_name.to_string(),
+                                    source_topic_uuid: source_topic_uuid.to_string(),
+                                    target_channel_number
+                                };
+
+                                let k = target_topic_name.to_owned() + "-" + target_topic_uuid;
+
+                                if let Some(conns) = self.actuators_index.get_mut(&k) {
+                                    conns.push(c)
+                                } else {
+                                    let mut v: Vec<ConnElem> = vec![];
+                                    v.push(c);
+                                    self.actuators_index.insert(k, v);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+
+        println!("ACTUATORS_INDEX");
+        for (k, v) in &self.actuators_index {
+            println!("{}", k);
+            for c in v {
+                println!(" {} {} ", c.source_topic_name, c.source_topic_uuid);
+            }
+        }
+
+
+        Ok(())
+
     }
 
     pub async fn get_auth_cred(
@@ -167,8 +262,18 @@ impl DHTManager {
         let data = self.cache.cache_event_loop().await?;
 
         if let DomoEvent::VolatileData(m) = data {
-            //println!("RECEIVED COMMAND{}", m);
+            println!(
+                "WAIT_DHT_MESSAGES RECEIVED COMMAND {} {}",
+                m,
+                get_epoch_ms()
+            );
             return self.handle_volatile_command(m.to_owned()).await;
+        }
+
+        if let DomoEvent::PersistentData(m) = data {
+            if m.topic_name == "domo_actuator_connection" {
+                self.build_actuators_index().await?;
+            }
         }
 
         Err("not a volatile message".into())

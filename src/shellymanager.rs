@@ -66,21 +66,36 @@ impl ShellyManager {
                 shelly_tcp_stream = TcpStream::connect(ip.to_owned() + ":443") => {
 
                     if let Ok(shelly_tcp_stream) = shelly_tcp_stream {
-                                let ws_shelly_res = tokio_tungstenite::client_async_tls_with_config(
+
+                        tokio::select! {
+                            ws_shelly_res = tokio_tungstenite::client_async_tls_with_config(
                                 ws_request, shelly_tcp_stream, None,
-                                Some(tokio_tungstenite::Connector::NativeTls(connector))).await;
+                                Some(tokio_tungstenite::Connector::NativeTls(connector))) => {
 
                                 if let Ok(ws_sh) = ws_shelly_res {
                                     let ws_shelly = ws_sh.0;
                                     let (write_shelly, read_shelly) = ws_shelly.split();
+                                    println!("Return ok");
                                     return Ok((write_shelly, read_shelly));
                                    } else {
+                                     println!("Increment connect_attempts counter");
                                      connect_attempts_counter += 1;
                                      //println!("{:?}", ws_shelly_res);
                                      if connect_attempts_counter == 2 {
+                                        println!("Error while connecting");
                                         return Err("connect error".into());
                                      }
                                 }
+                            }
+                            _ = tokio::time::sleep(Duration::from_millis(5000)) => {
+                                println!("Connect to shelly timeout TLS");
+                                connect_attempts_counter += 1;
+                                if connect_attempts_counter == 2 {
+                                    return Err("connect error".into());
+                                }
+                            }
+
+                        }
                     }
 
                 }
@@ -95,6 +110,8 @@ impl ShellyManager {
                 }
 
             }
+
+            println!("Exit from select");
         }
     }
 

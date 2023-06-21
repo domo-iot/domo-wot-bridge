@@ -55,6 +55,7 @@ fn parse_esp32_message(
                                                 "BEACON_ADV_PARSE from {} {}",
                                                 mac_address_actuator, beacon_adv_string
                                             );
+
                                             let b = BleBeaconMessage::from(
                                                 beacon_adv_string,
                                                 mac_address_actuator,

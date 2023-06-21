@@ -123,14 +123,16 @@ impl GlobalShellyManager {
         let mut idx = 0_usize;
 
         while idx < self.shelly_list.len() {
-
             let elapsed = self.shelly_list[idx]
                 .last_pong_timestamp
                 .elapsed()
                 .unwrap()
                 .as_secs();
 
-            println!("{} pong_timestamp_elapsed {}", self.shelly_list[idx].mac_address, elapsed);
+            println!(
+                "{} pong_timestamp_elapsed {}",
+                self.shelly_list[idx].mac_address, elapsed
+            );
             if elapsed > 120 {
                 println!("Reconnect to shelly {} ", self.shelly_list[idx].mac_address);
                 let ret = self.shelly_list[idx].reconnect().await;

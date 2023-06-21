@@ -11,6 +11,7 @@ use mdns::{Record, RecordKind};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Number};
 use sifis_config::{Cache, ConfigParser};
+use sifis_dht::utils::get_epoch_ms;
 use std::error::Error;
 use std::net::Ipv4Addr;
 use std::time::Duration;
@@ -91,11 +92,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let mut dht_manager = dhtmanager::DHTManager::new(opt.cache).await?;
 
+    dht_manager.build_actuators_index().await?;
+
+
+
     let mut wss_mgr = WssManager::new(5000).await;
 
     let stream = mdns::discover::interface(
         SERVICE_NAME,
-        Duration::from_secs(5),
+        Duration::from_secs(30),
         Ipv4Addr::new(10, 0, opt.node_id, 1),
     )?
     .listen();
@@ -122,6 +127,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                         }
                     }
             },
+
             esp32_actuator_update = wss_mgr.channel_of_actuator_updates_rx.recv() => {
                 //println!("Received esp32 actuator update");
                 if let Ok(msg) = esp32_actuator_update {
@@ -129,15 +135,17 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 }
             }
             // listener for ble beacons adv
+
             ble_update = wss_mgr.channel_of_updates_rx.recv() => {
 
-                ////println!("Received ble beacon update");
+                println!("Received ble beacon update");
 
                 if let Ok(msg) = ble_update {
                     handle_ble_update_message(msg, &mut dht_manager, &mut valve_command_manager).await;
                 }
 
             },
+
             // mdns await
             res = stream.next() =>  {
 
@@ -281,7 +289,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             command = dht_manager.wait_dht_messages() => {
 
                 if let Ok(cmd) = command {
-                        //println!("Received command from dht");
+                        //println!("Received command from dht {}", get_epoch_ms());
                         match cmd {
                             DHTCommand::ActuatorCommand(value) => {
 
@@ -350,7 +358,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
             },
 
             shelly_message = shelly_manager.wait_for_shelly_message() => {
-                //println!("Received shelly message");
 
                 if let Ok(message) = shelly_message {
                         handle_shelly_message(message, &mut dht_manager).await;
@@ -384,6 +391,8 @@ async fn handle_cred_message(
 }
 
 async fn handle_shelly_message(shelly_message: serde_json::Value, dht_manager: &mut DHTManager) {
+    println!("Received shelly message {}", get_epoch_ms());
+
     if let Some(message_type) = shelly_message.get("messageType") {
         if message_type.as_str().unwrap() == "propertyStatus" {
             if let Some(data) = shelly_message.get("data") {
@@ -462,6 +471,7 @@ async fn handle_shelly_message(shelly_message: serde_json::Value, dht_manager: &
                                                     &new_status,
                                                 )
                                                 .await;
+                                                println!("DOMO: UPDATE TOPICS {}", get_epoch_ms());
                                             }
                                         }
                                     }
@@ -568,8 +578,9 @@ async fn get_topic_from_actuator_topic(
 
             source_topic["value"]["updated_properties"] = serde_json::Value::Array(props);
         } else if target_topic_name == "shelly_rgbw" {
-
-            let rgbw_status_value_string = actuator_topic["rgbw_status"].as_str().ok_or("Error in rgbw_status")?;
+            let rgbw_status_value_string = actuator_topic["rgbw_status"]
+                .as_str()
+                .ok_or("Error in rgbw_status")?;
 
             let rgbw_status: serde_json::Value = serde_json::from_str(rgbw_status_value_string)?;
 
@@ -592,12 +603,16 @@ async fn get_topic_from_actuator_topic(
     }
 
     if source_topic_name == "domo_rgbw_light" {
-        let rgbw_status_value_string = actuator_topic["rgbw_status"].as_str().ok_or("Error in rgbw_status")?;
+        let rgbw_status_value_string = actuator_topic["rgbw_status"]
+            .as_str()
+            .ok_or("Error in rgbw_status")?;
 
         let rgbw_status: serde_json::Value = serde_json::from_str(rgbw_status_value_string)?;
 
-        println!("HERE DOMO_RGBW_LIGHT {} {} {} {}", rgbw_status["r"],
-                 rgbw_status["g"], rgbw_status["b"], rgbw_status["w"]);
+        println!(
+            "HERE DOMO_RGBW_LIGHT {} {} {} {}",
+            rgbw_status["r"], rgbw_status["g"], rgbw_status["b"], rgbw_status["w"]
+        );
 
         source_topic["value"]["r"] = rgbw_status["r"].clone();
         source_topic["value"]["g"] = rgbw_status["g"].clone();
@@ -711,55 +726,8 @@ async fn update_actuator_connection(
     topic_uuid: &str,
     actuator_topic: &serde_json::Value,
 ) -> Result<(), Box<dyn Error>> {
-    let topics = dht_manager
-        .cache
-        .get_topic_name("domo_actuator_connection")?;
 
-    let topics = topics.as_array().unwrap();
-    for topic in topics.iter() {
-        if let Some(value) = topic.get("value") {
-            if let Some(target_topic_name) = value.get("target_topic_name") {
-                if let Some(target_topic_uuid) = value.get("target_topic_uuid") {
-                    if let Some(target_channel_number) = value.get("target_channel_number") {
-                        if let Some(source_topic_name) = value.get("source_topic_name") {
-                            let target_topic_name = target_topic_name.as_str().unwrap();
-                            let target_topic_uuid = target_topic_uuid.as_str().unwrap();
-                            let target_channel_number = target_channel_number.as_u64().unwrap();
-                            let source_topic_name = source_topic_name.as_str().unwrap();
-                            let source_topic_uuid = topic["topic_uuid"].as_str().unwrap();
-
-                            if topic_uuid == target_topic_uuid && topic_name == target_topic_name {
-                                //println!(
-                                //    "target_topic_name {} target_topic_uuid {}",
-                                //    target_topic_name, target_topic_uuid
-                                //);
-                                //println!(
-                                //    "source_topic_name {} source_topic_uuid {}",
-                                //    source_topic_name, source_topic_uuid
-                                //);
-                                //println!("target_channel_number {}", target_channel_number);
-
-                                if let Ok(status) = get_topic_from_actuator_topic(
-                                    dht_manager,
-                                    source_topic_name,
-                                    source_topic_uuid,
-                                    target_channel_number,
-                                    actuator_topic,
-                                    target_topic_name,
-                                )
-                                .await
-                                {
-                                    dht_manager
-                                        .write_topic(source_topic_name, source_topic_uuid, &status)
-                                        .await;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
+    dht_manager.update_actuator_connections(&topic_name, &topic_uuid, actuator_topic).await;
 
     Ok(())
 }
@@ -780,9 +748,11 @@ async fn handle_shelly_command(
 
             let mac_address_str = mac_address.as_str().unwrap();
 
-            //println!("DOMO: SENDING ACTION");
+            //println!("DOMO: SENDING ACTION {}", get_epoch_ms());
 
             let _ret = shelly_manager.send_action(mac_address_str, &message).await;
+
+            println!("DOMO: SENT ACTION {}", get_epoch_ms());
         }
     }
 }
