@@ -433,6 +433,24 @@ async fn handle_shelly_message(shelly_message: serde_json::Value, dht_manager: &
                                         if let Some(mac_address) = value.get("mac_address") {
                                             let mac_address = mac_address.as_str().unwrap();
                                             if let Some(id) = value.get("id") {
+
+                                                if let Some(area_name) = value.get("area_name") {
+                                                    let area_name =area_name.as_str().unwrap();
+                                                    new_status["area_name"] =
+                                                        serde_json::Value::String(
+                                                            area_name.to_owned(),
+                                                        );
+                                                }
+
+                                                if let Some(note) = value.get("note") {
+                                                    let note = note.as_str().unwrap();
+                                                    new_status["note"] =
+                                                        serde_json::Value::String(
+                                                            note.to_owned(),
+                                                        );
+                                                }
+
+
                                                 new_status["user_login"] =
                                                     serde_json::Value::String(
                                                         user_login.to_owned(),
