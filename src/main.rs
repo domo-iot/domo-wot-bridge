@@ -623,6 +623,7 @@ async fn get_topic_from_actuator_topic(
     if source_topic_name == "domo_light"
         || source_topic_name == "domo_siren"
         || source_topic_name == "domo_switch"
+        || source_topic_name == "domo_fan_coil"
     {
         source_topic["value"]["status"] =
             actuator_topic["output".to_owned() + channel_number_str].clone();
