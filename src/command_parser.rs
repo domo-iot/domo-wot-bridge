@@ -1,5 +1,4 @@
 use crate::dhtmanager::{DHTCommand, DHTManager};
-use sifis_dht::utils::get_epoch_ms;
 use std::error::Error;
 
 pub async fn handle_turn_command(
