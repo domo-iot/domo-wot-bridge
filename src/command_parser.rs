@@ -283,23 +283,24 @@ pub async fn handle_rgbw_command(
         let dht_connection_topic = dht_manager
             .cache
             .get_topic_uuid("domo_actuator_connection", topic_uuid)?;
-        let dht_connection_topic = dht_connection_topic.get("value").unwrap();
 
-        if let Some(target_topic_name) = dht_connection_topic.get("target_topic_name") {
-            if let Some(target_topic_uuid) = dht_connection_topic.get("target_topic_uuid") {
-                if let Some(_target_channel_number) =
+
+        if let Some(dht_connection_topic) = dht_connection_topic.get("value") {
+            if let Some(target_topic_name) = dht_connection_topic.get("target_topic_name") {
+                if let Some(target_topic_uuid) = dht_connection_topic.get("target_topic_uuid") {
+                    if let Some(_target_channel_number) =
                     dht_connection_topic.get("target_channel_number")
-                {
-                    let target_topic_name = target_topic_name.as_str().unwrap();
-                    let target_topic_uuid = target_topic_uuid.as_str().unwrap();
+                    {
+                        let target_topic_name = target_topic_name.as_str().unwrap();
+                        let target_topic_uuid = target_topic_uuid.as_str().unwrap();
 
-                    let actuator_topic = dht_manager
-                        .cache
-                        .get_topic_uuid(target_topic_name, target_topic_uuid)?;
+                        let actuator_topic = dht_manager
+                            .cache
+                            .get_topic_uuid(target_topic_name, target_topic_uuid)?;
 
-                    if let Some(value) = actuator_topic.get("value") {
-                        if let Some(mac_address) = value.get("mac_address") {
-                            let action_payload = serde_json::json!({
+                        if let Some(value) = actuator_topic.get("value") {
+                            if let Some(mac_address) = value.get("mac_address") {
+                                let action_payload = serde_json::json!({
                                 "rgbw_status": {
                                     "r_value": desired_state.get("r_value").unwrap().as_u64().unwrap(),
                                     "g_value": desired_state.get("g_value").unwrap().as_u64().unwrap(),
@@ -308,7 +309,7 @@ pub async fn handle_rgbw_command(
                                 }
                             });
 
-                            let value = serde_json::json!({
+                                let value = serde_json::json!({
                                 "mac_address": mac_address,
                                 "shelly_action": {
                                   "input": {
@@ -320,7 +321,8 @@ pub async fn handle_rgbw_command(
                                 }
                             });
 
-                            return Ok(DHTCommand::ActuatorCommand(value));
+                                return Ok(DHTCommand::ActuatorCommand(value));
+                            }
                         }
                     }
                 }
