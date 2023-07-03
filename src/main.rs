@@ -916,6 +916,7 @@ async fn handle_ble_thermometer_update(
     let topic_uuid = topic["topic_uuid"].as_str().unwrap();
     let value_of_topic = &topic["value"];
     let token = value_of_topic["token"].as_str().unwrap();
+    let id = value_of_topic["id"].as_u64().unwrap();
     let mac_address = value_of_topic["mac_address"].as_str().unwrap();
     let name = value_of_topic["name"].as_str().unwrap();
     let area_name = value_of_topic["area_name"].as_str().unwrap();
@@ -930,6 +931,7 @@ async fn handle_ble_thermometer_update(
             "battery":  m.battery,
             "token": token,
             "mac_address": mac_address,
+            "id": id,
             "last_update_timestamp": serde_json::Value::Number(Number::from(sifis_dht::utils::get_epoch_ms() as u64)),
             "name": name,
             "area_name": area_name
@@ -953,7 +955,7 @@ async fn handle_ble_contact_update(
         let topic_uuid = topic["topic_uuid"].as_str().unwrap();
         let value_of_topic = &topic["value"];
         let token = value_of_topic["token"].as_str().unwrap();
-        let id = value_of_topic["id"].as_str().unwrap();
+        let id = value_of_topic["id"].as_u64().unwrap();
         let mac_address = value_of_topic["mac_address"].as_str().unwrap();
         let area_name = value_of_topic["area_name"].as_str().unwrap();
 
@@ -1028,12 +1030,15 @@ async fn handle_ble_valve_update(
     let mac_address = value_of_topic["mac_address"].as_str().unwrap();
     let name = value_of_topic["name"].as_str().unwrap();
     let area_name = value_of_topic["area_name"].as_str().unwrap();
+    let id = value_of_topic["id"].as_u64().unwrap();
+
 
     let value: bool = message == "1";
 
     let value = serde_json::json!(
     {   "status": value,
         "mac_address": mac_address,
+        "id": id,
         "last_update_timestamp": serde_json::Value::Number(Number::from(sifis_dht::utils::get_epoch_ms() as u64)),
         "name": name,
         "area_name": area_name
