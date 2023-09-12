@@ -94,8 +94,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     dht_manager.build_actuators_index().await?;
 
-
-
     let mut wss_mgr = WssManager::new(5000).await;
 
     let stream = mdns::discover::interface(
@@ -433,9 +431,8 @@ async fn handle_shelly_message(shelly_message: serde_json::Value, dht_manager: &
                                         if let Some(mac_address) = value.get("mac_address") {
                                             let mac_address = mac_address.as_str().unwrap();
                                             if let Some(id) = value.get("id") {
-
                                                 if let Some(area_name) = value.get("area_name") {
-                                                    let area_name =area_name.as_str().unwrap();
+                                                    let area_name = area_name.as_str().unwrap();
                                                     new_status["area_name"] =
                                                         serde_json::Value::String(
                                                             area_name.to_owned(),
@@ -445,11 +442,8 @@ async fn handle_shelly_message(shelly_message: serde_json::Value, dht_manager: &
                                                 if let Some(note) = value.get("note") {
                                                     let note = note.as_str().unwrap();
                                                     new_status["note"] =
-                                                        serde_json::Value::String(
-                                                            note.to_owned(),
-                                                        );
+                                                        serde_json::Value::String(note.to_owned());
                                                 }
-
 
                                                 new_status["user_login"] =
                                                     serde_json::Value::String(
@@ -745,8 +739,9 @@ async fn update_actuator_connection(
     topic_uuid: &str,
     actuator_topic: &serde_json::Value,
 ) -> Result<(), Box<dyn Error>> {
-
-    dht_manager.update_actuator_connections(&topic_name, &topic_uuid, actuator_topic).await;
+    dht_manager
+        .update_actuator_connections(&topic_name, &topic_uuid, actuator_topic)
+        .await;
 
     Ok(())
 }
@@ -1031,7 +1026,6 @@ async fn handle_ble_valve_update(
     let name = value_of_topic["name"].as_str().unwrap();
     let area_name = value_of_topic["area_name"].as_str().unwrap();
     let id = value_of_topic["id"].as_u64().unwrap();
-
 
     let value: bool = message == "1";
 
