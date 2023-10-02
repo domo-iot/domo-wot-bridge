@@ -540,10 +540,13 @@ async fn get_topic_from_actuator_topic(
             old_value = old_ene;
         }
 
-        let current_ene = actuator_topic["power_data"]["channel".to_owned() + channel_number_str]
-            ["energy"]
-            .as_f64()
-            .unwrap();
+        let current_ene =
+            &actuator_topic["power_data"]["channel".to_owned() + channel_number_str]["energy"];
+
+        let current_ene = current_ene.as_f64().unwrap_or_else(|| {
+            log::error!("Cannot convert {current_ene:?} to float");
+            0.0
+        });
 
         let total_ene = old_value + current_ene;
 
