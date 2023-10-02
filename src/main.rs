@@ -7,6 +7,8 @@ use crate::utils::{ValveCommandManager, ValveData};
 use crate::wssmanager::WssManager;
 use clap::Parser;
 use futures_util::{pin_mut, stream::StreamExt};
+use if_watch::tokio::IfWatcher;
+use if_watch::{IfEvent, IpNet};
 use mdns::{Record, RecordKind};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Number};
@@ -78,6 +80,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     env_logger::init();
 
+    while run(&opt).await? {
+        log::info!("Network configuration changed, reloading");
+    }
+
+    Ok(())
+}
+
+async fn run(opt: &DomoWotBridge) -> Result<bool, Box<dyn Error>> {
     let mut ping_mgr = PingManager::new(10);
 
     let mut check_shelly_mode = PingManager::new(10);
@@ -90,25 +100,38 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let mut shelly_manager = GlobalShellyManager::new().await;
 
-    let mut dht_manager = dhtmanager::DHTManager::new(opt.cache).await?;
+    let mut dht_manager = dhtmanager::DHTManager::new(opt.cache.clone()).await?;
 
     dht_manager.build_actuators_index().await?;
 
     let mut wss_mgr = WssManager::new(5000).await;
 
-    let stream = mdns::discover::interface(
-        SERVICE_NAME,
-        Duration::from_secs(30),
-        Ipv4Addr::new(10, 0, opt.node_id, 1),
-    )?
-    .listen();
-
+    let addr = Ipv4Addr::new(10, 0, opt.node_id, 1);
+    let stream = mdns::discover::interface(SERVICE_NAME, Duration::from_secs(30), addr)?.listen();
     pin_mut!(stream);
+    let ifwatch = IfWatcher::new()?;
+    pin_mut!(ifwatch);
+
+    let addr = IpNet::new(addr.into(), 24)?;
 
     let mut counter = 0;
     loop {
         counter += 1;
         tokio::select! {
+            ev = ifwatch.select_next_some() => {
+                match ev? {
+                    IfEvent::Down(ip) => {
+                        if ip.contains(&addr) {
+                            return Ok(true);
+                        }
+                    }
+                    IfEvent::Up(ip) => {
+                        if ip.contains(&addr) {
+                            return Ok(true);
+                        }
+                    }
+                }
+            }
             Some(auth_cred_message) = wss_mgr.rx_auth_cred.recv() => {
                     //println!("Received auth cred from esp32");
                     let ret = handle_cred_message(auth_cred_message, &mut dht_manager).await;
