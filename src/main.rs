@@ -497,6 +497,14 @@ async fn handle_shelly_message(shelly_message: serde_json::Value, dht_manager: &
     }
 }
 
+/// Convert a Value to f64 if possible or return 0.0
+fn to_f64(v: &serde_json::Value) -> f64 {
+    v.as_f64().unwrap_or_else(|| {
+        log::warn!("Cannot convert {v:?} to float");
+        0.0
+    })
+}
+
 async fn get_topic_from_actuator_topic(
     dht_manager: &DHTManager,
     source_topic_name: &str,
@@ -540,13 +548,9 @@ async fn get_topic_from_actuator_topic(
             old_value = old_ene;
         }
 
-        let current_ene =
-            &actuator_topic["power_data"]["channel".to_owned() + channel_number_str]["energy"];
-
-        let current_ene = current_ene.as_f64().unwrap_or_else(|| {
-            log::error!("Cannot convert {current_ene:?} to float");
-            0.0
-        });
+        let current_ene = to_f64(
+            &actuator_topic["power_data"]["channel".to_owned() + channel_number_str]["energy"],
+        );
 
         let total_ene = old_value + current_ene;
 
@@ -654,9 +658,7 @@ async fn get_topic_from_actuator_topic(
                 old_value = old_ene;
             }
 
-            let current_ene = actuator_topic["energy".to_owned() + channel_number_str]
-                .as_f64()
-                .unwrap();
+            let current_ene = to_f64(&actuator_topic["energy".to_owned() + channel_number_str]);
 
             let total_ene = old_value + current_ene;
 
