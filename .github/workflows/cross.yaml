@@ -36,13 +36,13 @@ jobs:
       uses: docker/build-push-action@v4
       with:
         push: true
-        tags: ghcr.io/${{ github.repository_owner }}/domo-wot-bridge-amd64:${{github.run_number}}
+        tags: ghcr.io/${{ github.repository_owner }}/domo-wot-bridge-amd64-${{ github.head_ref || github.ref_name }}:${{github.run_number}}
         context: target/x86_64-unknown-linux-musl/release
         file: docker/Dockerfile-amd64
     - name: Build and push arm64v8
       uses: docker/build-push-action@v4
       with:
         push: true
-        tags: ghcr.io/${{ github.repository_owner }}/domo-wot-bridge-arm64v8:${{github.run_number}}
+        tags: ghcr.io/${{ github.repository_owner }}/domo-wot-bridge-arm64v8-${{ github.head_ref || github.ref_name }}:${{github.run_number}}
         context: target/aarch64-unknown-linux-musl/release
         file: docker/Dockerfile-OpenWrt

@@ -30,8 +30,8 @@ aes = "0.8.1"
 hex-literal = "0.3.4"
 hex = "0.4.3"
 env_logger = "0.9.3"
-sifis-dht = { git = "https://github.com/sifis-home/libp2p-rust-dht", branch="master" }
-sifis-config = { git = "https://github.com/sifis-home/libp2p-rust-dht", branch="master" }
+sifis-dht = { git = "https://github.com/sifis-home/libp2p-rust-dht", branch="sync-new-nodes" }
+sifis-config = { git = "https://github.com/sifis-home/libp2p-rust-dht", branch="sync-new-nodes" }
 rsa = "0.6"
 pem-rfc7468 = "0.3"
 rand = "0.8"
