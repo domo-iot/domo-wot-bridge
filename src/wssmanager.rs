@@ -230,7 +230,6 @@ impl WssManager {
                                             "data": shelly_action
                                         });
 
-            //println!("Request status update for ESP32");
             let m = Message::Text(serde_json::to_string(&message).unwrap());
             let _ret = socket.send(m).await;
 
@@ -244,7 +243,6 @@ impl WssManager {
                                         ESP32CommandType::Valve => {
 
                                                if esp32_mac_address == cmd.actuator_mac_address {
-                                                    //println!("Received valve command {} ", esp32_mac_address);
                                                     if let Some(shelly_action_payload) = cmd.payload.get("shelly_action") {
                                                                 let shelly_action = serde_json::json!({ "shelly_action": shelly_action_payload });
 
@@ -275,41 +273,32 @@ impl WssManager {
                                             }
                                         },
                                         ESP32CommandType::Ping => {
-                                            if last_pong_timestamp.elapsed().unwrap().as_secs() > 60{
-                                                //println!("{} disconnected due to lack of PONGS", esp32_mac_address);
+                                            if last_pong_timestamp.elapsed().unwrap().as_secs() > 60 {
                                                 return;
                                             }
-                                            //println!("Received Ping command request");
                                             let _ret = socket.send(Message::Ping(vec![])).await;
-
                                         }
 
                                     }
                                 }
                         }
+
                         // received message from an esp32
                         Some(msg) = socket.recv() => {
 
-                            //println!("MSG {:?}", msg);
-
-                            match msg {
+                         match msg {
                                 Ok(message) => {
                                     match message {
-
                                         Message::Text(message) => {
-
                                             let shelly_message: serde_json::Value = serde_json::from_str(&message).unwrap();
-
                                             if !parse_esp32_message(&shelly_message, &updates_channel) {
                                                 let _ret = updates_actuator_channel.send(shelly_message);
                                             }
                                         },
                                         Message::Close(_) => {
-                                            //println!("{} disconnected", esp32_mac_address);
                                             return;
                                         },
                                         Message::Pong(_) => {
-                                            //println!("PONG FROM {}", esp32_mac_address);
                                             last_pong_timestamp = SystemTime::now();
                                         }
                                         _ => {}

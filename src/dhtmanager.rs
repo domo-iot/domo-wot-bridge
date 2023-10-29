@@ -1,6 +1,6 @@
-use std::collections::HashMap;
 use sifis_dht::domocache::DomoEvent;
 use sifis_dht::utils::get_epoch_ms;
+use std::collections::HashMap;
 use std::error::Error;
 
 use crate::{command_parser, get_topic_from_actuator_topic};
@@ -10,43 +10,47 @@ pub enum DHTCommand {
     ValveCommand(serde_json::Value),
 }
 
-
 pub struct ConnElem {
     pub source_topic_name: String,
-    pub  source_topic_uuid: String,
-    pub target_channel_number: u64
+    pub source_topic_uuid: String,
+    pub target_channel_number: u64,
 }
 
 pub struct DHTManager {
     pub cache: sifis_dht::domocache::DomoCache,
-    pub actuators_index: HashMap<String, Vec<ConnElem>>
+    pub actuators_index: HashMap<String, Vec<ConnElem>>,
 }
 
 impl DHTManager {
     pub async fn new(cache_config: sifis_config::Cache) -> Result<DHTManager, Box<dyn Error>> {
         let sifis_cache = sifis_dht::domocache::DomoCache::new(cache_config).await?;
         let actuators_index = HashMap::new();
-        Ok(DHTManager { cache: sifis_cache, actuators_index })
+        Ok(DHTManager {
+            cache: sifis_cache,
+            actuators_index,
+        })
     }
 
-
-    pub async fn update_actuator_connections(&mut self, topic_name: &str, topic_uuid: &str, actuator_topic: &serde_json::Value){
-        let k = topic_name.to_owned() +"-"+ topic_uuid;
+    pub async fn update_actuator_connections(
+        &mut self,
+        topic_name: &str,
+        topic_uuid: &str,
+        actuator_topic: &serde_json::Value,
+    ) {
+        let k = topic_name.to_owned() + "-" + topic_uuid;
 
         if let Some(conns) = self.actuators_index.get(&k) {
             for conn in conns {
-
-
                 if let Ok(status) = get_topic_from_actuator_topic(
                     self,
                     &conn.source_topic_name,
                     &conn.source_topic_uuid,
                     conn.target_channel_number,
                     actuator_topic,
-                    topic_name
-                ).await
+                    topic_name,
+                )
+                .await
                 {
-
                     println!("Updating");
                     println!("{} {} ", conn.source_topic_name, conn.source_topic_uuid);
 
@@ -59,12 +63,14 @@ impl DHTManager {
     }
 
     pub async fn build_actuators_index(&mut self) -> Result<(), Box<dyn Error>> {
-
         println!("BUILD ACT INDEX");
 
         self.actuators_index.clear();
 
-        let connections = self.cache.get_topic_name("domo_actuator_connection").unwrap();
+        let connections = self
+            .cache
+            .get_topic_name("domo_actuator_connection")
+            .unwrap();
 
         for conn in connections.as_array().unwrap().iter() {
             if let Some(value) = conn.get("value") {
@@ -78,10 +84,10 @@ impl DHTManager {
                                 let source_topic_name = source_topic_name.as_str().unwrap();
                                 let source_topic_uuid = conn["topic_uuid"].as_str().unwrap();
 
-                                let c: ConnElem = ConnElem{
+                                let c: ConnElem = ConnElem {
                                     source_topic_name: source_topic_name.to_string(),
                                     source_topic_uuid: source_topic_uuid.to_string(),
-                                    target_channel_number
+                                    target_channel_number,
                                 };
 
                                 let k = target_topic_name.to_owned() + "-" + target_topic_uuid;
@@ -100,7 +106,6 @@ impl DHTManager {
             }
         }
 
-
         println!("ACTUATORS_INDEX");
         for (k, v) in &self.actuators_index {
             println!("{}", k);
@@ -109,9 +114,7 @@ impl DHTManager {
             }
         }
 
-
         Ok(())
-
     }
 
     pub async fn get_auth_cred(
@@ -119,7 +122,7 @@ impl DHTManager {
         user: &str,
         password: &str,
     ) -> Result<serde_json::Value, Box<dyn Error>> {
-        let shelly_plus_topic_names = vec!["shelly_1plus", "shelly_1pm_plus", "shelly_2pm_plus"];
+        let shelly_plus_topic_names = vec!["shelly_1plus"];
 
         for topic in shelly_plus_topic_names {
             let shelly_plus_topics = self.cache.get_topic_name(topic)?;
@@ -168,7 +171,7 @@ impl DHTManager {
         Err("act not found".into())
     }
 
-    pub async fn get_actuator_from_mac_address(
+    pub async fn get_topic_from_mac_address(
         &mut self,
         mac_address_req: &str,
     ) -> Result<serde_json::Value, Box<dyn Error>> {

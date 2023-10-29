@@ -53,10 +53,6 @@ impl ValveCommandManager {
                         timestamp: now,
                     },
                 );
-                //println!(
-                //    "BEST ACT FOR {} is {} ",
-                //    valve_mac_address, actuator_mac_address
-                //);
             }
         } else {
             self.best_actuator.insert(
@@ -67,10 +63,6 @@ impl ValveCommandManager {
                     timestamp: now,
                 },
             );
-            //println!(
-            //    "BEST ACT FOR {} is {} ",
-            //    valve_mac_address, actuator_mac_address
-            //);
         }
     }
 

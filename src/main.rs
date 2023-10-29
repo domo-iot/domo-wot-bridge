@@ -1,39 +1,23 @@
 use crate::bleutils::ContactStatus;
 use crate::dhtmanager::{DHTCommand, DHTManager};
-use crate::globalshellymanager::GlobalShellyManager;
 use crate::messages::{AuthCredMessage, BleBeaconMessage, ESP32CommandMessage, ESP32CommandType};
-use crate::shellymanager::ShellyManager;
 use crate::utils::{ValveCommandManager, ValveData};
 use crate::wssmanager::WssManager;
 use clap::Parser;
-use futures_util::{pin_mut, stream::StreamExt};
-use mdns::{Record, RecordKind};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Number};
 use sifis_config::{Cache, ConfigParser};
 use sifis_dht::utils::get_epoch_ms;
 use std::error::Error;
-use std::net::Ipv4Addr;
-use std::time::Duration;
 use tokio::time::Interval;
+
 
 mod bleutils;
 mod command_parser;
 mod dhtmanager;
-mod globalshellymanager;
 mod messages;
-mod shellymanager;
 mod utils;
 mod wssmanager;
-
-const SERVICE_NAME: &str = "_webthing._tcp.local";
-
-pub struct ShellyDiscoveryResult {
-    pub ip_address: String,
-    pub topic_name: String,
-    pub mac_address: String,
-    pub mdns_name: String,
-}
 
 struct PingManager {
     ping_timer: Interval,
@@ -41,7 +25,8 @@ struct PingManager {
 
 impl PingManager {
     pub fn new(period_secs: u64) -> PingManager {
-        let interval = tokio::time::interval(tokio::time::Duration::from_secs(period_secs));
+        let interval =
+            tokio::time::interval(tokio::time::Duration::from_secs(period_secs));
         PingManager {
             ping_timer: interval,
         }
@@ -84,115 +69,46 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let mut check_radiator_valve_commands = PingManager::new(20);
 
-    let mut shelly_plus_actuators = vec![];
+    let mut shelly_plus_acts = vec![];
 
     let mut valve_command_manager = ValveCommandManager::new();
-
-    let mut shelly_manager = GlobalShellyManager::new().await;
 
     let mut dht_manager = dhtmanager::DHTManager::new(opt.cache).await?;
 
     dht_manager.build_actuators_index().await?;
 
-
-
     let mut wss_mgr = WssManager::new(5000).await;
 
-    let stream = mdns::discover::interface(
-        SERVICE_NAME,
-        Duration::from_secs(30),
-        Ipv4Addr::new(10, 0, opt.node_id, 1),
-    )?
-    .listen();
-
-    pin_mut!(stream);
-
-    let mut counter = 0;
     loop {
-        counter += 1;
         tokio::select! {
             Some(auth_cred_message) = wss_mgr.rx_auth_cred.recv() => {
-                    //println!("Received auth cred from esp32");
-                    let ret = handle_cred_message(auth_cred_message, &mut dht_manager).await;
-                    if let Ok(m) = ret {
-                        if let Some(mac_address) = m.get("mac_address") {
-                            if let Some(topic) = m.get("topic") {
-                                //println!("TOPIC {} mac_address {}", topic, mac_address.to_string());
-                                let topic = topic.as_str().unwrap().to_owned();
-                                if topic == "shelly_1plus" || topic == "shelly_1pm_plus" || topic == "shelly_2pm_plus" {
-                                    println!("Shelly plus {}, {} connected" , topic, mac_address);
-                                    shelly_plus_actuators.push(mac_address.as_str().unwrap().to_owned());
-                                }
+                let ret = handle_cred_message(auth_cred_message, &mut dht_manager).await;
+                if let Ok(m) = ret {
+                    if let Some(mac_address) = m.get("mac_address") {
+                        if let Some(topic) = m.get("topic") {
+                            let topic = topic.as_str().unwrap().to_owned();
+                            if topic == "shelly_1plus" {
+                                println!("Shelly plus {}, {} connected" , topic, mac_address);
+                                shelly_plus_acts.push(mac_address.as_str().unwrap().to_owned());
                             }
                         }
                     }
+                }
             },
-
             esp32_actuator_update = wss_mgr.channel_of_actuator_updates_rx.recv() => {
-                //println!("Received esp32 actuator update");
                 if let Ok(msg) = esp32_actuator_update {
                     handle_shelly_message(msg, &mut dht_manager).await;
                 }
-            }
-            // listener for ble beacons adv
+            },
 
             ble_update = wss_mgr.channel_of_updates_rx.recv() => {
-
-                println!("Received ble beacon update");
-
                 if let Ok(msg) = ble_update {
                     handle_ble_update_message(msg, &mut dht_manager, &mut valve_command_manager).await;
                 }
-
             },
 
-            // mdns await
-            res = stream.next() =>  {
-
-                println!("Received mdns message");
-
-                if let Some(Ok(response)) = res {
-
-                    let shelly_res = response.records()
-                                     .filter_map(get_shelly_discovery_result)
-                                     .next();
-
-                    if let Some(shelly) = shelly_res {
-
-                        println!("{} {} {}", shelly.topic_name, shelly.mac_address, shelly.ip_address);
-
-                        let topic = dht_manager.get_actuator_from_mac_address(&shelly.mac_address).await;
-                        match topic {
-                            Ok(t) => {
-
-                                    if let Some(value) = t.get("value"){
-
-                                        if let Some(user_login) = value.get("user_login"){
-                                            if let Some(user_password) = value.get("user_password") {
-
-                                                let user_login_str = user_login.as_str();
-                                                let user_password_str = user_password.as_str();
-
-                                                if let Some(user) = user_login_str {
-                                                    if let Some(password) = user_password_str {
-                                                        shelly_manager.insert_shelly(shelly, user.to_owned(), password.to_owned()).await;
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                            },
-                            Err(_e) => {
-                            }
-                        }
-
-                    }
-                }
-
-            },
             _ = check_radiator_valve_commands.wait_ping_timer() => {
-                //println!("RADIATOR VALVE QUEUE CHECK");
-                if !valve_command_manager.valve_commands.is_empty() && !shelly_plus_actuators.is_empty() {
+                if !valve_command_manager.valve_commands.is_empty() && !shelly_plus_acts.is_empty() {
 
                     let mut to_remove = vec![];
                     let valves = dht_manager.cache.get_topic_name("domo_ble_valve").unwrap();
@@ -200,46 +116,39 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     let valve_commands = valve_command_manager.valve_commands.clone();
 
                     for (key, val) in valve_commands {
-                            let mut ok = false;
-                                for valve in valves.as_array().unwrap() {
-                                    if let Some(value) = valve.get("value") {
-                                        if let Some(mac_address) = value.get("mac_address") {
-                                            let mac = mac_address.as_str().unwrap();
-                                            if mac == key {
-                                                if let Some(status) = value.get("status") {
-                                                   let status = status.as_bool().unwrap();
-                                                    //println!("Status: {} ", status);
-                                                    //println!("Desired state: {}", val.desired_state);
-
-                                                    if let Some(desired_state) = val.desired_state.get("desired_state") {
-                                                        let desired_state = desired_state.as_bool().unwrap();
-                                                        if status == desired_state {
-                                                            //println!("Removing valve command from queue");
-                                                            to_remove.push(key.clone());
-                                                            ok = true;
-                                                            break;
-                                                        }
-                                                    }
+                        let mut ok = false;
+                        for valve in valves.as_array().unwrap() {
+                            if let Some(value) = valve.get("value") {
+                                if let Some(mac_address) = value.get("mac_address") {
+                                    let mac = mac_address.as_str().unwrap();
+                                    if mac == key {
+                                        if let Some(status) = value.get("status") {
+                                            let status = status.as_bool().unwrap();
+                                            if let Some(desired_state) = val.desired_state.get("desired_state") {
+                                                let desired_state = desired_state.as_bool().unwrap();
+                                                if status == desired_state {
+                                                    to_remove.push(key.clone());
+                                                    ok = true;
+                                                    break;
                                                 }
                                             }
                                         }
                                     }
                                 }
+                            }
+                        }
                         if ok {
                             continue;
-                        } else if val.attempts < 100 {
-
+                        }
+                        else if val.attempts < 100 {
                             if let Some(next_act_mac) = valve_command_manager.get_best_actuator_for_valve(&key) {
-                                //println!("RE-SEND VALVE COMMAND TO {}", next_act_mac.clone());
                                 let cmd = ESP32CommandMessage {
-                                        command_type: ESP32CommandType::Valve,
-                                        mac_address: key.to_string(),
-                                        payload: val.desired_state.clone(),
-                                        actuator_mac_address: next_act_mac
+                                    command_type: ESP32CommandType::Valve,
+                                    mac_address: key.to_string(),
+                                    payload: val.desired_state.clone(),
+                                    actuator_mac_address: next_act_mac
                                 };
-
                                 let _ret = wss_mgr.command_channel_tx.send(cmd);
-
                                 let mut val = val.clone();
                                 val.attempts += 1;
                                 valve_command_manager.valve_commands.insert(key, val);
@@ -251,7 +160,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
                         }
 
                     }
-
                     for r in to_remove {
                         valve_command_manager.remove(&r);
                     }
@@ -259,11 +167,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 }
             },
             _ = ping_mgr.wait_ping_timer() => {
-                println!("PING_TIMER {}", counter);
-
-                shelly_manager.send_ping().await;
-                shelly_manager.check_if_reconnect_needed().await;
-
                 let cmd = ESP32CommandMessage {
                                                 command_type: ESP32CommandType::Ping,
                                                 actuator_mac_address: String::from(""),
@@ -275,26 +178,16 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
             },
             _ = check_shelly_mode.wait_ping_timer() => {
-                log::info!("CHECK_SHELLY_MODE {}", counter);
-
                 if let Ok(actuator_connections) = dht_manager.cache.get_topic_name("domo_actuator_connection") {
                     let actuator_connections = actuator_connections.as_array().unwrap();
-
-                    check_shelly_esp8266_mode(actuator_connections, &mut shelly_manager, &mut dht_manager).await;
-
-                    check_shelly_esp32_mode(actuator_connections, &shelly_plus_actuators, &mut dht_manager, &mut wss_mgr).await;
-
+                    check_shelly_esp32_mode(actuator_connections, &shelly_plus_acts, &mut dht_manager, &mut wss_mgr).await;
                 }
             },
-            command = dht_manager.wait_dht_messages() => {
 
+            command = dht_manager.wait_dht_messages() => {
                 if let Ok(cmd) = command {
-                        //println!("Received command from dht {}", get_epoch_ms());
                         match cmd {
                             DHTCommand::ActuatorCommand(value) => {
-
-                                //println!("Received actuator command");
-
                                 if let Some(mac_address) = value.get("mac_address") {
                                     let mac_string = mac_address.as_str().unwrap();
                                     let cmd = ESP32CommandMessage {
@@ -303,20 +196,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
                                         payload: value.clone(),
                                         actuator_mac_address: String::from("")
                                     };
-
                                     let _ret = wss_mgr.command_channel_tx.send(cmd);
-
                                 }
-
-                                handle_shelly_command(value, &mut dht_manager, &mut shelly_manager).await;
                             }
                             DHTCommand::ValveCommand(value) => {
 
-                                if !shelly_plus_actuators.is_empty() {
+                                if !shelly_plus_acts.is_empty() {
                                     if let Some(mac_address) = value.get("mac_address") {
-
-                                        //println!("Valve command {}", value);
-
                                         let mac_string = mac_address.as_str().unwrap();
 
                                         if let Some(best_act) = valve_command_manager.get_best_actuator_for_valve(mac_string) {
@@ -335,11 +221,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
                                                 actuator_mac_address: best_act.clone()
                                             };
 
-                                            //println!("SENDING VALVE COMMAND TO {} ", best_act);
 
                                             let _ret = wss_mgr.command_channel_tx.send(cmd);
                                         } else {
-                                            //println!("NO ACTUATOR for {} ", mac_string);
 
                                             let vd = ValveData {
                                                 desired_state: value.clone(),
@@ -355,15 +239,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                             }
                         }
                     }
-            },
-
-            shelly_message = shelly_manager.wait_for_shelly_message() => {
-
-                if let Ok(message) = shelly_message {
-                        handle_shelly_message(message, &mut dht_manager).await;
-                }
             }
-
         }
     }
 }
@@ -433,9 +309,8 @@ async fn handle_shelly_message(shelly_message: serde_json::Value, dht_manager: &
                                         if let Some(mac_address) = value.get("mac_address") {
                                             let mac_address = mac_address.as_str().unwrap();
                                             if let Some(id) = value.get("id") {
-
                                                 if let Some(area_name) = value.get("area_name") {
-                                                    let area_name =area_name.as_str().unwrap();
+                                                    let area_name = area_name.as_str().unwrap();
                                                     new_status["area_name"] =
                                                         serde_json::Value::String(
                                                             area_name.to_owned(),
@@ -445,11 +320,8 @@ async fn handle_shelly_message(shelly_message: serde_json::Value, dht_manager: &
                                                 if let Some(note) = value.get("note") {
                                                     let note = note.as_str().unwrap();
                                                     new_status["note"] =
-                                                        serde_json::Value::String(
-                                                            note.to_owned(),
-                                                        );
+                                                        serde_json::Value::String(note.to_owned());
                                                 }
-
 
                                                 new_status["user_login"] =
                                                     serde_json::Value::String(
@@ -511,7 +383,6 @@ async fn get_topic_from_actuator_topic(
     actuator_topic: &serde_json::Value,
     target_topic_name: &str,
 ) -> Result<serde_json::Value, Box<dyn Error>> {
-    //println!("ACTUATOR_TOPIC {}", actuator_topic);
     let mut source_topic = dht_manager
         .cache
         .get_topic_uuid(source_topic_name, source_topic_uuid)?;
@@ -745,96 +616,11 @@ async fn update_actuator_connection(
     topic_uuid: &str,
     actuator_topic: &serde_json::Value,
 ) -> Result<(), Box<dyn Error>> {
-
-    dht_manager.update_actuator_connections(&topic_name, &topic_uuid, actuator_topic).await;
+    dht_manager
+        .update_actuator_connections(&topic_name, &topic_uuid, actuator_topic)
+        .await;
 
     Ok(())
-}
-
-async fn handle_shelly_command(
-    shelly_command: serde_json::Value,
-    _dht_manager: &mut DHTManager,
-    shelly_manager: &mut GlobalShellyManager,
-) {
-    if let Some(mac_address) = shelly_command.get("mac_address") {
-        if let Some(shelly_action_payload) = shelly_command.get("shelly_action") {
-            let shelly_action = serde_json::json!({ "shelly_action": shelly_action_payload });
-
-            let message = serde_json::json!({
-                "messageType": "requestAction",
-                "data": shelly_action
-            });
-
-            let mac_address_str = mac_address.as_str().unwrap();
-
-            //println!("DOMO: SENDING ACTION {}", get_epoch_ms());
-
-            let _ret = shelly_manager.send_action(mac_address_str, &message).await;
-
-            println!("DOMO: SENT ACTION {}", get_epoch_ms());
-        }
-    }
-}
-
-pub fn get_shelly_discovery_result(record: &Record) -> Option<ShellyDiscoveryResult> {
-    if record.name.contains("shelly_1plus") {
-        return None;
-    }
-
-    if record.name.contains("shelly_1pm_plus") {
-        return None;
-    }
-
-    if record.name.contains("shelly_2pm_plus") {
-        return None;
-    }
-
-    if !record.name.contains("shelly") && !record.name.contains("geeklink") {
-        return None;
-    }
-
-    let record_name = record.name.replace(".local", "");
-
-    match record.kind {
-        RecordKind::A(addr) => {
-            let name_parts: Vec<&str> = record_name.split('-').collect();
-            let topic_name = name_parts[0];
-            let mac_address = name_parts[1].to_owned();
-
-            let mac_address_with_points = mac_address[0..2].to_owned()
-                + ":"
-                + &mac_address[2..4]
-                + ":"
-                + &mac_address[4..6]
-                + ":"
-                + &mac_address[6..8]
-                + ":"
-                + &mac_address[8..10]
-                + ":"
-                + &mac_address[10..12];
-
-            let res = ShellyDiscoveryResult {
-                ip_address: addr.to_string(),
-                topic_name: topic_name.to_string(),
-                mac_address: mac_address_with_points,
-                mdns_name: record.name.to_owned(),
-            };
-            Some(res)
-        }
-        RecordKind::AAAA(addr) => {
-            let name_parts: Vec<&str> = record.name.split('-').collect();
-            let topic_name = name_parts[0];
-            let mac_address = name_parts[1];
-            let res = ShellyDiscoveryResult {
-                ip_address: addr.to_string(),
-                topic_name: topic_name.to_string(),
-                mac_address: mac_address.to_string(),
-                mdns_name: record.name.to_owned(),
-            };
-            Some(res)
-        }
-        _ => None,
-    }
 }
 
 async fn handle_ble_update_message(
@@ -843,14 +629,13 @@ async fn handle_ble_update_message(
     valve_command_manager: &mut ValveCommandManager,
 ) {
     let ret = dht_manager
-        .get_actuator_from_mac_address(&message.mac_address)
+        .get_topic_from_mac_address(&message.mac_address)
         .await;
 
     if let Ok(topic) = ret {
         let topic_name = topic["topic_name"].as_str().unwrap();
 
         if topic_name == "domo_ble_thermometer" {
-            //println!("THERMO UPDATE {}", message.payload);
 
             if let Ok(bytes) = base64::decode(&message.payload) {
                 use hex::ToHex;
@@ -868,12 +653,10 @@ async fn handle_ble_update_message(
         }
 
         if topic_name == "domo_ble_contact" {
-            //println!("CONTACT UPDATE {}", message.payload);
 
             if let Ok(bytes) = base64::decode(&message.payload) {
                 use hex::ToHex;
                 let beacon_adv_string = bytes.encode_hex::<String>();
-                //println!("BEACON CONTACT ADV from {}: {}", message.mac_address, beacon_adv_string);
 
                 handle_ble_contact_update(
                     dht_manager,
@@ -1032,7 +815,6 @@ async fn handle_ble_valve_update(
     let area_name = value_of_topic["area_name"].as_str().unwrap();
     let id = value_of_topic["id"].as_u64().unwrap();
 
-
     let value: bool = message == "1";
 
     let value = serde_json::json!(
@@ -1124,72 +906,6 @@ async fn calculate_mode(
     ret
 }
 
-async fn check_shelly_esp8266_mode(
-    actuator_connections: &Vec<serde_json::Value>,
-    shelly_manager: &mut GlobalShellyManager,
-    dht_manager: &mut DHTManager,
-) {
-    let mut to_remove = Vec::new();
-    for (idx, act) in &mut shelly_manager.shelly_list.iter_mut().enumerate() {
-        if let Ok(topic_of_act) = dht_manager
-            .get_actuator_from_mac_address(&act.mac_address)
-            .await
-        {
-            if let Some(value) = topic_of_act.get("value") {
-                if let Some(mode) = value.get("mode") {
-                    let mode = mode.as_u64().unwrap();
-                    let act_topic_name = topic_of_act["topic_name"].as_str().unwrap();
-                    let act_topic_uuid = topic_of_act["topic_uuid"].as_str().unwrap();
-                    let desired_mode =
-                        calculate_mode(actuator_connections, act_topic_name, act_topic_uuid).await;
-
-                    let mut inverted = false;
-                    if let Some(inv) = value.get("inverted") {
-                        inverted = inv.as_bool().unwrap();
-                    }
-
-                    if mode != desired_mode {
-                        //println!(
-                        //    "Change mode of {} {} to {} ",
-                        //    act_topic_name, act_topic_uuid, desired_mode
-                        //);
-
-                        let action_payload = serde_json::json!({
-                            "mode": desired_mode,
-                            "inverted": inverted
-                        });
-
-                        let action_payload_string = action_payload.to_string();
-
-                        let shelly_action = serde_json::json!({
-                            "shelly_action" : {
-                                "input" : {
-                                    "action": {
-                                        "action_name": "change_mode",
-                                        "action_payload": action_payload_string
-                                    }
-                                }
-                            }
-                        });
-
-                        let message = serde_json::json!({
-                            "messageType": "requestAction",
-                            "data": shelly_action
-                        });
-
-                        act.send_action(&message).await;
-                        to_remove.push(idx);
-                    }
-                }
-            }
-        }
-    }
-
-    for id in to_remove {
-        shelly_manager.shelly_list.remove(id);
-    }
-}
-
 async fn check_shelly_esp32_mode(
     actuator_connections: &Vec<serde_json::Value>,
     shelly_plus_list: &Vec<String>,
@@ -1197,7 +913,7 @@ async fn check_shelly_esp32_mode(
     wss_mgr: &mut WssManager,
 ) {
     for act in shelly_plus_list {
-        if let Ok(topic_of_act) = dht_manager.get_actuator_from_mac_address(act).await {
+        if let Ok(topic_of_act) = dht_manager.get_topic_from_mac_address(act).await {
             if let Some(value) = topic_of_act.get("value") {
                 if let Some(mode) = value.get("mode") {
                     let mode = mode.as_u64().unwrap();
@@ -1212,10 +928,7 @@ async fn check_shelly_esp32_mode(
                     }
 
                     if mode != desired_mode {
-                        //println!(
-                        //    "Change mode of {} {} to {} ",
-                        //    act_topic_name, act_topic_uuid, desired_mode
-                        //);
+
                         let action_payload = serde_json::json!({
                             "mode": desired_mode,
                             "inverted": inverted
