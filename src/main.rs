@@ -45,6 +45,13 @@ struct DomoWotBridge {
     /// node_id
     #[arg(short, long, default_value_t = 1)]
     pub node_id: u8,
+
+    #[arg(long, short, default_value = "test_ssid")]
+    pub wifi_ssid: String,
+
+    #[arg(long, short, default_value = "test_password")]
+    pub wifi_password: String,
+
 }
 
 #[derive(Parser, Debug, Serialize, Deserialize)]
@@ -178,10 +185,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
             },
             _ = check_shelly_mode.wait_ping_timer() => {
-                if let Ok(actuator_connections) = dht_manager.cache.get_topic_name("domo_actuator_connection") {
-                    let actuator_connections = actuator_connections.as_array().unwrap();
-                    check_shelly_esp32_mode(actuator_connections, &shelly_plus_acts, &mut dht_manager, &mut wss_mgr).await;
-                }
+                    check_shelly_esp32_wifi(&opt.wifi_ssid, &opt.wifi_password, &shelly_plus_acts, &mut dht_manager, &mut wss_mgr).await;
             },
 
             command = dht_manager.wait_dht_messages() => {
@@ -831,83 +835,10 @@ async fn handle_ble_valve_update(
         .await;
 }
 
-async fn calculate_mode(
-    act_connections: &Vec<serde_json::Value>,
-    act_topic_name: &str,
-    act_topic_uuid: &str,
-) -> u64 {
-    if [
-        "shelly_1",
-        "shelly_1plus",
-        "shelly_1pm",
-        "shelly_em",
-        "shelly_1pm_plus",
-    ]
-    .contains(&act_topic_name)
-    {
-        return 0; // RELAY
-    }
 
-    if ["shelly_dimmer"].contains(&act_topic_name) {
-        return 2; // DIMMER
-    }
-
-    let mut ret = 0;
-
-    if act_topic_name == "shelly_25" || act_topic_name == "shelly_2pm_plus" {
-        ret = 0; // RELAY
-    }
-
-    if act_topic_name == "shelly_rgbw" {
-        ret = 4; // LED_DIMMER
-    }
-
-    for conn in act_connections {
-        if let Some(value) = conn.get("value") {
-            if let Some(connection_type) = value.get("connection_type") {
-                let connection_type = connection_type.as_str().unwrap();
-                if connection_type != "output" {
-                    continue;
-                }
-            }
-
-            if let Some(target_topic_name) = value.get("target_topic_name") {
-                if let Some(target_topic_uuid) = value.get("target_topic_uuid") {
-                    if let Some(source_topic_name) = value.get("source_topic_name") {
-                        if let Some(source_topic_uuid) = value.get("source_topic_uuid") {
-                            let target_topic_name = target_topic_name.as_str().unwrap();
-                            let target_topic_uuid = target_topic_uuid.as_str().unwrap();
-                            let source_topic_name = source_topic_name.as_str().unwrap();
-                            let _source_topic_uuid = source_topic_uuid.as_str().unwrap();
-
-                            if target_topic_uuid == act_topic_uuid
-                                && target_topic_name == act_topic_name
-                            {
-                                if (target_topic_name == "shelly_25"
-                                    || target_topic_name == "shelly_2pm_plus")
-                                    && (source_topic_name == "domo_roller_shutter"
-                                        || source_topic_name == "domo_garage_gate")
-                                {
-                                    return 1; // SHUTTER
-                                }
-                                if target_topic_name == "shelly_rgbw"
-                                    && source_topic_name == "domo_rgbw_light"
-                                {
-                                    return 3; // RGBW
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    ret
-}
-
-async fn check_shelly_esp32_mode(
-    actuator_connections: &Vec<serde_json::Value>,
+async fn check_shelly_esp32_wifi(
+    wifi_ssid_to_set: &str,
+    wifi_password_to_set: &str,
     shelly_plus_list: &Vec<String>,
     dht_manager: &mut DHTManager,
     wss_mgr: &mut WssManager,
@@ -915,23 +846,14 @@ async fn check_shelly_esp32_mode(
     for act in shelly_plus_list {
         if let Ok(topic_of_act) = dht_manager.get_topic_from_mac_address(act).await {
             if let Some(value) = topic_of_act.get("value") {
-                if let Some(mode) = value.get("mode") {
-                    let mode = mode.as_u64().unwrap();
-                    let act_topic_name = topic_of_act["topic_name"].as_str().unwrap();
-                    let act_topic_uuid = topic_of_act["topic_uuid"].as_str().unwrap();
-                    let desired_mode =
-                        calculate_mode(actuator_connections, act_topic_name, act_topic_uuid).await;
+                if let Some(wifi_ssid) = value.get("wifi_ssid") {
+                    let wifi_ssid = wifi_ssid.as_str().unwrap();
 
-                    let mut inverted = false;
-                    if let Some(inv) = value.get("inverted") {
-                        inverted = inv.as_bool().unwrap();
-                    }
-
-                    if mode != desired_mode {
+                    if wifi_ssid != wifi_ssid_to_set {
 
                         let action_payload = serde_json::json!({
-                            "mode": desired_mode,
-                            "inverted": inverted
+                            "wifi_ssid": wifi_ssid_to_set,
+                            "wifi_password": wifi_password_to_set
                         });
 
                         let action_payload_string = action_payload.to_string();
@@ -940,7 +862,7 @@ async fn check_shelly_esp32_mode(
                             "shelly_action" : {
                                 "input" : {
                                     "action": {
-                                        "action_name": "change_mode",
+                                        "action_name": "change_wifi",
                                         "action_payload": action_payload_string
                                     }
                                 }
