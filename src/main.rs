@@ -185,7 +185,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
             },
             _ = check_shelly_mode.wait_ping_timer() => {
-                    check_shelly_esp32_wifi(&opt.wifi_ssid, &opt.wifi_password, &shelly_plus_acts, &mut dht_manager, &mut wss_mgr).await;
+                    check_shelly_esp32_wifi(&opt.wifi_ssid, &opt.wifi_password, &mut shelly_plus_acts, &mut dht_manager, &mut wss_mgr).await;
             },
 
             command = dht_manager.wait_dht_messages() => {
@@ -839,12 +839,18 @@ async fn handle_ble_valve_update(
 async fn check_shelly_esp32_wifi(
     wifi_ssid_to_set: &str,
     wifi_password_to_set: &str,
-    shelly_plus_list: &Vec<String>,
+    shelly_plus_list: &mut Vec<String>,
     dht_manager: &mut DHTManager,
     wss_mgr: &mut WssManager,
 ) {
-    for act in shelly_plus_list {
-        if let Ok(topic_of_act) = dht_manager.get_topic_from_mac_address(act).await {
+    let mut to_remove = Vec::new();
+    let mut count = 0;
+    let shelly_plus_list_copy = shelly_plus_list.clone();
+
+    println!("SIZE OF SHELLY_PLUS_LIST {}", shelly_plus_list_copy.len());
+
+    for act in shelly_plus_list_copy {
+        if let Ok(topic_of_act) = dht_manager.get_topic_from_mac_address(&act).await {
             if let Some(value) = topic_of_act.get("value") {
                 if let Some(wifi_ssid) = value.get("wifi_ssid") {
                     let wifi_ssid = wifi_ssid.as_str().unwrap();
@@ -877,9 +883,16 @@ async fn check_shelly_esp32_wifi(
                         };
 
                         let _ret = wss_mgr.command_channel_tx.send(cmd);
+                        println!("SEND CHANGE WIFI COMMAND FOR {}", act);
+                        to_remove.push(count);
                     }
                 }
             }
         }
+        count = count + 1;
+    }
+
+    for act in to_remove {
+        shelly_plus_list.remove(act);
     }
 }

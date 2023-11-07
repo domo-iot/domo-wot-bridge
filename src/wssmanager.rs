@@ -31,6 +31,7 @@ fn parse_esp32_message(
                             return true;
                         }
                         Ok(status_result) => {
+                            //println!("STATUS {}", status_result);
                             if let Some(updated_properties) =
                                 status_result.get("updated_properties")
                             {
@@ -39,6 +40,11 @@ fn parse_esp32_message(
                                     status_result.get("mac_address").unwrap().as_str().unwrap();
 
                                 let mut update_act = false;
+
+                                if vec_prop.len() == 0  {
+                                    update_act = true;
+                                    println!("UPDATING ACT");
+                                }
 
                                 for prop in vec_prop {
                                     let prop_str = prop.as_str().unwrap();
@@ -51,10 +57,10 @@ fn parse_esp32_message(
                                         if let Some(beacon_adv) = status_result.get("beacon_adv") {
                                             let beacon_adv_string = beacon_adv.as_str().unwrap();
 
-                                            println!(
-                                                "BEACON_ADV_PARSE from {} {}",
-                                                mac_address_actuator, beacon_adv_string
-                                            );
+                                             println!(
+                                                 "BEACON_ADV_PARSE from {} {}",
+                                                 mac_address_actuator, beacon_adv_string
+                                             );
 
                                             let b = BleBeaconMessage::from(
                                                 beacon_adv_string,
@@ -77,6 +83,7 @@ fn parse_esp32_message(
                                         }
                                     }
                                 }
+
                                 return !update_act;
                             }
                         }
@@ -183,6 +190,8 @@ impl WssManager {
 
             let mut pass = String::from("");
 
+            let mut initialized = false;
+
             if let Some(password) = password {
                 pass = password;
             }
@@ -239,6 +248,12 @@ impl WssManager {
                         command = command_receive_channel.recv() => {
 
                                 if let Ok(cmd) = command {
+
+                                    if !initialized {
+                                        println!("SHELLY {} IS NOT INITIALIZED YET, DROP COMMAND {:?}", esp32_mac_address, cmd);
+                                        return;
+                                    }
+
                                     match cmd.command_type {
                                         ESP32CommandType::Valve => {
 
@@ -252,7 +267,6 @@ impl WssManager {
                                                                 });
                                                                 let m = Message::Text(serde_json::to_string(&message).unwrap());
                                                                 let _ret = socket.send(m).await;
-
                                                     }
                                                }
 
@@ -278,7 +292,6 @@ impl WssManager {
                                             }
                                             let _ret = socket.send(Message::Ping(vec![])).await;
                                         }
-
                                     }
                                 }
                         }
@@ -292,6 +305,8 @@ impl WssManager {
                                         Message::Text(message) => {
                                             let shelly_message: serde_json::Value = serde_json::from_str(&message).unwrap();
                                             if !parse_esp32_message(&shelly_message, &updates_channel) {
+                                                println!("Received status update from {}", esp32_mac_address);
+                                                initialized = true;
                                                 let _ret = updates_actuator_channel.send(shelly_message);
                                             }
                                         },
