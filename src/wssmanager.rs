@@ -251,7 +251,7 @@ impl WssManager {
 
                                     if !initialized {
                                         println!("SHELLY {} IS NOT INITIALIZED YET, DROP COMMAND {:?}", esp32_mac_address, cmd);
-                                        return;
+                                        continue;
                                     }
 
                                     match cmd.command_type {
